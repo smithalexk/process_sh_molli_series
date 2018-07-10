@@ -8,6 +8,14 @@
 
 function T1MAP = process_sh_molli_series(varargin)
 
+% Check user has Image Processing Toolbox
+box = 'Image Processing Toolbox';
+v = ver;
+if ~(any(strcmp(box, {v.Name})))
+    disp([box ' required']);
+    return;
+end
+
 % Check number of arguments
 if numel(varargin) < 1
     % No arguemnts - use current directory with user selectio
