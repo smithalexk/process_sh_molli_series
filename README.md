@@ -6,20 +6,50 @@ University of Oxford
 
 MATLAB and python combination to process (sh)MOLLI MRI data. python fitting by default, will fallback to (slower) MATLAB curve fitting if python not available.
 
-## Install
-Copy files to MATLAB path. Both files must be in the same directory.
+## Instructions:
 
-*Usage 1:*
+1. Place both files in the same directory
 
-Create a MATLAB struct with the processed data.
+2. In order to use the python fitting (which is faster), when you start Matlab, run the command
 
-Flags to optionally plot the data at the end and to allow user interaction to specify ROI
+`> pyversion`
 
-`T1MAP = process_sh_molli_series(directory,(plot),(user selection));`
+This should find your python installation and let Matlab use it. If this command returns nothing, you might need to setup python.
 
-*Usage 2:*
+If you’re using Wolfgang and pyversion does’t do anything, try running:
 
-Lauch the viewer with some already processed data
+`> pyversion 'C:\Python35\python.exe'`
 
-`process_sh_molli_series(T1MAP);`
+3. Call the script with the command:
 
+`> T1MAP = process_sh_molli_series;`
+
+A directory popup window will be displayed, allowing you the select the path to the files.
+
+The files will be read in and you will be prompted to select from the TiggerTime or InversionTime tags (for backwards compatibility). One option will either be blank or have all the same number. You want to select the option with varying values. Normally TriggerTime is the correct option.
+
+4. A window will pop up allowing you to select the ROI to process. Click multiple points to trace out the region. Double click on the start point to finish your selection. Pressing ESC will process the whole image. This can take a while.
+
+5. The magic happens using parallel processing and python fitting to speed things up. There is a fancy process indicator which will try and predict when it will finish.
+
+6. Once the processing is complete, a 2x2 window will pop up so you can view the data. Top left is the input image. Top right is the fitting error. Bottom left is the processed data. Bottom right is the data and curve fit. Select different points to see the fitted data. Click outside any subplot to finish.
+
+7. The returned value ‘T1MAP’ (or whatever) is a Matlab struct which has loads of information in, including: directory of the files used, input data, output data, curve fits, ROI mask and others.
+
+8. You can call up the interactive ‘review’ window from any processed data using
+
+`> proces_sh_molli_series(T1MAP);`
+
+9. You can pass the directory path straight to script by running
+
+`> T1MAP = process_sh_molli_series(path_to_dcm_files);`
+
+10. To make things easier, you can forego the final interactive review window by running
+
+`> T1MAP = process_sh_molli_series(path_to_dcm_files, false);`
+
+11. You can even skip the pre-processing stages by running
+
+`> T1MAP = process_sh_molli_series(path_to_dcm_files, false, false);`
+
+This will assume that TriggerTime is the correct tag and process the whole image.
