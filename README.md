@@ -4,7 +4,7 @@ University of Oxford
 
 MATLAB and python combination to process (sh)MOLLI MRI data.
 
-#Install
+# Install
 Copy files to MATLAB path. Both files must be in the same directory.
 
 *Usage 1:*
