@@ -53,3 +53,24 @@ The files will be read in and you will be prompted to select from the TiggerTime
 `> T1MAP = process_sh_molli_series(path_to_dcm_files, false, false);`
 
 This will assume that TriggerTime is the correct tag and process the whole image.
+
+12. It wouldn’t be too hard to write a small wrapper to chug through loads of data in the background and save all the results. Assuming a series of subdirectories each containing DICOM files, that could would look something like:
+```
+D = dir;
+for i = 1:length(D)
+	if D(i).isdir
+		T1MAP = process_sh_molli_series([D(i).path filesep D(i).name, false, false);
+		save([pwd filesep D(i).name '_T1MAP.mat'], T1MAP);
+	end
+end
+```
+
+13. At the moment, the data is saved to a Matlab struct. You can access the output image from `T1MAP.output_LL_corrected` to display, save etc. It doesn’t write the saved data to DICOM or anything. This is the next thing to do (Dan McGowan was asking for this functionality). To save the final image as a PNG, run:
+
+```
+> imwrite(uint16(T1MAP.output_LL_corrected), 'T1MAP.png');
+```
+
+14. The script assumes that the directory you give it contains only the image files in DICOM format. It will likely break if this is not the case.
+
+15. In theory, the script should work with both MOLLI or shMOLLI data and be capable of processing 3D shMOLLI volumes (if that is a thing).
