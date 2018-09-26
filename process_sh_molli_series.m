@@ -18,7 +18,7 @@ end
 
 % Check number of arguments
 if numel(varargin) < 1
-    % No arguemnts - use current directory with user selectio
+    % No arguemnts - use current directory with user selection
     directory = uigetdir;
     if directory == 0
         directory = '.';
@@ -90,7 +90,7 @@ if user_selection
     reply = input(prompt,'s');
 else
     % If the use isn't going to make a choice, do some guess work
-    if isempty(time)
+    if isempty(time) || ~isempty(inv_time)
         reply = '2';
     elseif isempty(inv_time)
         reply = '1';
