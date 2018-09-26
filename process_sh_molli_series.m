@@ -169,7 +169,7 @@ ALL_FITS = cell(size(ROI_inds));
 ALL_SEE = nan(length(ROI_inds), 4);
 tic
 parfor_progress(numel(ROI_inds));
-for I = 1:numel(ROI_inds)
+parfor I = 1:numel(ROI_inds)
     i = ROI_inds(I); % This is the image index
     this_y = im_column(i,:)';
     
