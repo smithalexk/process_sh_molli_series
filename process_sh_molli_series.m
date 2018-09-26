@@ -181,6 +181,13 @@ for I = 1:numel(ROI_inds)
         if count(py.sys.path,'') == 0
             insert(py.sys.path,int32(0),'');
         end
+        FunPath = strsplit(mfilename('fullpath'),filesep);
+        ModPath = strjoin(FunPath(1:end-1),filesep);
+        
+        P = py.sys.path;
+        if count(P, ModPath) == 0
+            insert(P, int32(0), ModPath);
+        end
         mod = py.importlib.import_module('sh_molli_fit');
         py.importlib.reload(mod);
         x_fit = py.list(inv_time'); % Only need to do this once
