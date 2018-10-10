@@ -128,7 +128,7 @@ masks = [mask0 mask1 mask2 mask3];
 py_fit = 0;
 if ~isempty(pyversion)
     py_fit = 1;
-    disp('python fitting to be used');
+    fprintf('python fitting to be used\n');
     dummy_cfit = fit([0,0,0,0]',[1,1,1,1]',fittype('(Axy - Bxy * exp(-tinv/tonestar))','dependent',{'y'},...
         'independent',{'tinv'},'coefficients',{'Axy','Bxy','tonestar'},'options',fitoptions('Method','NonlinearLeastSquares','Lower',[0,0,0],'StartPoint',[1000,1000,1000])));
 else
@@ -143,8 +143,9 @@ molli = fittype('Axy - Bxy * exp(-tinv/tonestar)','dependent',{'y'},...
 
 % Display the first image and let the user choose a poly ROI
 if user_selection
-    disp('Select ROI to process.\nPress ESC to process the whole image.');
-    figure, imagesc(im(:,:,1,1)); axis image; hold on; drawnow;
+    str = 'Select ROI to process.\nPress ESC to process the whole image.\n';
+    fprintf(str);
+    figure, imagesc(im(:,:,1,1)); axis image; hold on; title(str); drawnow;
     h = impoly;
     position = wait(h);
 else
@@ -167,72 +168,103 @@ ROI_inds = find(ROI_mask == 1);
 % Create some blank variables to store the results in
 ALL_FITS = cell(size(ROI_inds));
 ALL_SEE = nan(length(ROI_inds), 4);
+
+% ROI_inds is sorted from top left of image to bottom right by default
+% Randomise this order so that data is processsed randomly. This will
+% hopefullty make the progress bar more accurate. Otherwise, quick at the
+% start and end where there is no data and slower in the middle
+r = rand(size(ROI_inds));
+[~, r] = sort(r);
+ROI_inds = ROI_inds(r);
+
 tic
 parfor_progress(numel(ROI_inds));
-for I = 1:numel(ROI_inds)
+parfor I = 1:numel(ROI_inds)
     i = ROI_inds(I); % This is the image index
     this_y = im_column(i,:)';
     
-    % Do the fit with each mask
-    %tic
-    if py_fit
-        
-        % Import python module
-        if count(py.sys.path,'') == 0
-            insert(py.sys.path,int32(0),'');
-        end
-        mod = py.importlib.import_module('sh_molli_fit');
-        py.importlib.reload(mod);
-        x_fit = py.list(inv_time'); % Only need to do this once
-        
-        warning('off', 'curvefit:cfit:subsasgn:coeffsClearingConfBounds');
-        % Create python lists
-        y_fit0 = py.list((this_y.*mask0)');
-        y_fit1 = py.list((this_y.*mask1)');
-        y_fit2 = py.list((this_y.*mask2)');
-        y_fit3 = py.list((this_y.*mask3)');
-        % Do python fits
-        try py_fit0 = mod.my_fit(x_fit,y_fit0); catch, py_fit0 = {0,0,0, Inf}; end% caught = caught + 1; end
-        %py_fit0 = mod.my_fit(x_fit,y_fit0);
-        try py_fit1 = mod.my_fit(x_fit,y_fit1); catch, py_fit1 = {0,0,0, Inf}; end% caught = caught + 1; end
-        try py_fit2 = mod.my_fit(x_fit,y_fit2); catch, py_fit2 = {0,0,0, Inf}; end% caught = caught + 1; end
-        try py_fit3 = mod.my_fit(x_fit,y_fit3); catch, py_fit3 = {0,0,0, Inf}; end% caught = caught + 1; end
-        % Hack together some fit objects so I don't have to rewrite the
-        % rest of the code
-        fit0 = dummy_cfit;
-        fit0.Axy = py_fit0{1};
-        fit0.Bxy = py_fit0{2};
-        fit0.tonestar = py_fit0{3};
-        fit1 = dummy_cfit;
-        fit1.Axy = py_fit1{1};
-        fit1.Bxy = py_fit1{2};
-        fit1.tonestar = py_fit1{3};
-        fit2 = dummy_cfit;
-        fit2.Axy = py_fit2{1};
-        fit2.Bxy = py_fit2{2};
-        fit2.tonestar = py_fit2{3};
+    % If no data at this voxel (i.e., just noise), don't fit
+    if mean(this_y) <= 100 % Need more than 100 signal
+        % Set some null results       
+        fit0 = dummy_cfit;       
+        fit1 = dummy_cfit;       
+        fit2 = dummy_cfit;       
         fit3 = dummy_cfit;
-        fit3.Axy = py_fit3{1};
-        fit3.Bxy = py_fit3{2};
-        fit3.tonestar = py_fit3{3};
-        % Save the SSE
-        G0.sse = py_fit0{4};
-        G1.sse = py_fit1{4};
-        G2.sse = py_fit2{4};
-        G3.sse = py_fit3{4};
-        warning('on', 'curvefit:cfit:subsasgn:coeffsClearingConfBounds');
+        G0.sse = NaN;
+        G1.sse = NaN;
+        G2.sse = NaN;
+        G3.sse = NaN;
     else
-        [fit0,G0] = fit(inv_time, this_y.*mask0, molli);
-        [fit1,G1] = fit(inv_time, this_y.*mask1, molli);
-        [fit2,G2] = fit(inv_time, this_y.*mask1, molli);
-        [fit3,G3] = fit(inv_time, this_y.*mask3, molli);
-        %toc
+        % Do the fit with each mask
+        %tic
+        if py_fit
+            
+            % Import python module
+            % For reasons that I cannot figure out, this import will fail in the parfor
+            % loop the first time around, so it needs to be done twice.
+            % ¯\_(?)_/¯
+            try
+                if count(py.sys.path,'') == 0
+                    insert(py.sys.path,int32(0),'');
+                end
+                mod = py.importlib.import_module('sh_molli_fit');
+                py.importlib.reload(mod);
+            catch
+                if count(py.sys.path,'') == 0
+                    insert(py.sys.path,int32(0),'');
+                end
+                mod = py.importlib.import_module('sh_molli_fit');
+                py.importlib.reload(mod);
+            end
+            x_fit = py.list(inv_time'); % Only need to do this once
+            
+            warning('off', 'curvefit:cfit:subsasgn:coeffsClearingConfBounds');
+            % Create python lists
+            y_fit0 = py.list((this_y.*mask0)');
+            y_fit1 = py.list((this_y.*mask1)');
+            y_fit2 = py.list((this_y.*mask2)');
+            y_fit3 = py.list((this_y.*mask3)');
+            % Do python fits
+            try py_fit0 = mod.my_fit(x_fit,y_fit0); catch, py_fit0 = {0,0,0, Inf}; end% caught = caught + 1; end
+            %py_fit0 = mod.my_fit(x_fit,y_fit0);
+            try py_fit1 = mod.my_fit(x_fit,y_fit1); catch, py_fit1 = {0,0,0, Inf}; end% caught = caught + 1; end
+            try py_fit2 = mod.my_fit(x_fit,y_fit2); catch, py_fit2 = {0,0,0, Inf}; end% caught = caught + 1; end
+            try py_fit3 = mod.my_fit(x_fit,y_fit3); catch, py_fit3 = {0,0,0, Inf}; end% caught = caught + 1; end
+            % Hack together some fit objects so I don't have to rewrite the
+            % rest of the code
+            fit0 = dummy_cfit;
+            fit0.Axy = py_fit0{1};
+            fit0.Bxy = py_fit0{2};
+            fit0.tonestar = py_fit0{3};
+            fit1 = dummy_cfit;
+            fit1.Axy = py_fit1{1};
+            fit1.Bxy = py_fit1{2};
+            fit1.tonestar = py_fit1{3};
+            fit2 = dummy_cfit;
+            fit2.Axy = py_fit2{1};
+            fit2.Bxy = py_fit2{2};
+            fit2.tonestar = py_fit2{3};
+            fit3 = dummy_cfit;
+            fit3.Axy = py_fit3{1};
+            fit3.Bxy = py_fit3{2};
+            fit3.tonestar = py_fit3{3};
+            % Save the SSE
+            G0.sse = py_fit0{4};
+            G1.sse = py_fit1{4};
+            G2.sse = py_fit2{4};
+            G3.sse = py_fit3{4};
+            warning('on', 'curvefit:cfit:subsasgn:coeffsClearingConfBounds');
+        else
+            [fit0,G0] = fit(inv_time, this_y.*mask0, molli);
+            [fit1,G1] = fit(inv_time, this_y.*mask1, molli);
+            [fit2,G2] = fit(inv_time, this_y.*mask1, molli);
+            [fit3,G3] = fit(inv_time, this_y.*mask3, molli);
+            %toc
+        end
     end
-    % Save all the results
-    ALL_FITS{I} = {fit0, fit1, fit2, fit3};
-    ALL_SEE(I,:) = [G0.sse G1.sse G2.sse G3.sse];
-    
-    
+        % Save all the results
+        ALL_FITS{I} = {fit0, fit1, fit2, fit3};
+        ALL_SEE(I,:) = [G0.sse G1.sse G2.sse G3.sse];
     parfor_progress;
 end
 parfor_progress(0);
@@ -244,12 +276,22 @@ BEST_MASKS = [];
 BEST_SSE = [];
 BEST_IND = nan(size(ROI_inds));
 for I = 1:numel(ROI_inds)
-    ind = find(ALL_SEE(I,:) == min(ALL_SEE(I,:)));
+    % Check for NaN values, suggesting we haven't fitted data here
+    sse_min = min(ALL_SEE(I,:), [] ,'includenan');
+    if isnan(sse_min)
+        ind = 1;
+    else
+        ind = find(ALL_SEE(I,:) == sse_min);
+    end
     ind = ind(1);
+    try
     BEST_FITS(I) = ALL_FITS{I}(ind);
     BEST_MASKS(I,:) = masks(:,ind)';
     BEST_IND(I) = ind - 1; % mask0 is at ind1
     BEST_SSE(I) = ALL_SEE(I,ind);
+    catch
+        break;
+    end
 end
 
 % Create an output image
@@ -269,12 +311,13 @@ for i = 1:length(ROI_inds)
         INDS(ROI_inds(i)) = BEST_IND(i);
         SSE(ROI_inds(i)) = BEST_SSE(i);
     catch
-        i
+        break;
     end
 end
 
-% Any T1s that are unrealistic, set to 0
-output_LL(output_LL > 2000 | output_LL < 0) = 0;
+% Any T1s that are unrealistic, set to max or 0 values
+%output_LL(output_LL > 3000) = 3000;
+output_LL(output_LL < 0) = 0;
 
 % Create the output structure
 T1MAP.directory = directory;
@@ -288,15 +331,15 @@ T1MAP.ROI_mask = ROI_mask;
 T1MAP.MASKS = MASKS;
 T1MAP.im_column = im_column;
 T1MAP.SSE = SSE;
-
+T1MAP.dicom_image = reshape(T1MAP.output_LL_corrected, [size(T1MAP.output_LL_corrected,1), size(T1MAP.output_LL_corrected,2), 1, size(T1MAP.output_LL_corrected,3)]);
 end
 
 function interactive_plot(T1MAP)
 
 % Plot the output data together
-subplot(2,2,1); imagesc(T1MAP.input(:,:,1,1)); axis image
-subplot(2,2,2); imagesc(T1MAP.SSE); axis image;
-subplot(2,2,3); imagesc(T1MAP.output_LL_corrected); axis image;
+subplot(2,2,1); imagesc(T1MAP.input(:,:,1,1)); axis image; title('Input image 1');
+subplot(2,2,3); imagesc(T1MAP.SSE); axis image; title('Curve fitting error');
+subplot(2,2,2); imagesc(T1MAP.output_LL_corrected, [0 5000]); axis image; title('LL Corrected T1*');
 
 % Activate interactive graph
 while true
@@ -312,7 +355,7 @@ while true
         hold off;
         plot(0);
         hold on;
-        if T1MAP.ROI_mask(i)
+        if T1MAP.ROI_mask(i) && ~isnan(T1MAP.SSE(i))
             this_mask = T1MAP.MASKS{i};
             %plot(FITS{round(x),round(y)});
             plot(T1MAP.InversionTime, T1MAP.im_column(i,:), 'bx'); drawnow;
